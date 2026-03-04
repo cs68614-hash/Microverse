@@ -2,6 +2,11 @@ const http = require("http");
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "127.0.0.1";
+const OPENCLAW_GATEWAY_URL =
+  process.env.OPENCLAW_GATEWAY_URL || "http://127.0.0.1:12670";
+const OPENCLAW_GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN;
+const OPENCLAW_AGENT_ID = "main";
+const OPENCLAW_MODEL = "openclaw";
 
 // In-memory queue: worldId -> pending actions[]
 const worldActionQueues = new Map();
@@ -57,13 +62,73 @@ function extractRoute(pathname) {
   return null;
 }
 
-// Placeholder for future OpenClaw main agent call integration.
-function buildNpcResponseText(event) {
+function buildNpcResponseText(event, errorMessage) {
   const inputText = String(event.text || "").trim();
+  const suffix = errorMessage ? ` (fallback: ${errorMessage})` : "";
   if (!inputText) {
-    return "[OpenClaw/mainplaceholder] Hello from the bridge.";
+    return `[OpenClaw/mainplaceholder] Hello from the bridge.${suffix}`;
   }
-  return `[OpenClaw/mainplaceholder] Received: ${inputText}`;
+  return `[OpenClaw/mainplaceholder] Received: ${inputText}${suffix}`;
+}
+
+function getOpenClawErrorMessage(err) {
+  if (!err || typeof err !== "object") {
+    return "Unknown OpenClaw error";
+  }
+  if ("message" in err && typeof err.message === "string") {
+    return err.message;
+  }
+  return "Unknown OpenClaw error";
+}
+
+async function callOpenClawForAlice(event, worldId) {
+  const npcName = "alice";
+  const playerText = String(event.text || "").trim();
+  if (!OPENCLAW_GATEWAY_TOKEN) {
+    throw new Error("OPENCLAW_GATEWAY_TOKEN is not set");
+  }
+
+  const startMs = Date.now();
+  const response = await fetch(`${OPENCLAW_GATEWAY_URL}/v1/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${OPENCLAW_GATEWAY_TOKEN}`,
+      "x-openclaw-agent-id": OPENCLAW_AGENT_ID
+    },
+    body: JSON.stringify({
+      model: OPENCLAW_MODEL,
+      user: `microverse:${worldId}:${npcName}`,
+      messages: [
+        {
+          role: "system",
+          content:
+            "you are Alice NPC in Microverse, reply concisely and in-character."
+        },
+        {
+          role: "user",
+          content: playerText
+        }
+      ]
+    })
+  });
+  const latencyMs = Date.now() - startMs;
+  console.log(`[bridge_server] OpenClaw alice latency_ms=${latencyMs}`);
+
+  if (!response.ok) {
+    const raw = await response.text();
+    throw new Error(
+      `OpenClaw HTTP ${response.status}: ${raw.slice(0, 300) || "<empty body>"}`
+    );
+  }
+
+  const json = await response.json();
+  const content = String(json?.choices?.[0]?.message?.content || "").trim();
+  if (!content) {
+    throw new Error("OpenClaw returned empty content");
+  }
+
+  return content;
 }
 
 function enqueueAction(worldId, action) {
@@ -88,8 +153,9 @@ async function handleEventsBatch(req, res, worldId) {
   }
 
   const events = Array.isArray(data.events) ? data.events : [];
+  const errors = [];
 
-  for (const event of events) {
+  for (const [index, event] of events.entries()) {
     if (!event || typeof event !== "object") {
       continue;
     }
@@ -100,18 +166,38 @@ async function handleEventsBatch(req, res, worldId) {
       continue;
     }
 
-    enqueueAction(worldId, {
-      npc: "alice",
-      type: "say",
-      text: buildNpcResponseText(event)
-    });
+    try {
+      const content = await callOpenClawForAlice(event, worldId);
+      enqueueAction(worldId, {
+        npc: "alice",
+        type: "say",
+        text: content
+      });
+    } catch (err) {
+      const errorMessage = getOpenClawErrorMessage(err);
+      console.error(`[bridge_server] OpenClaw alice error: ${errorMessage}`);
+      errors.push({
+        index,
+        npc: "alice",
+        error: errorMessage
+      });
+      enqueueAction(worldId, {
+        npc: "alice",
+        type: "say",
+        text: buildNpcResponseText(event, errorMessage)
+      });
+    }
   }
 
-  sendJson(res, 200, {
+  const responsePayload = {
     ok: true,
     worldId,
     accepted: events.length
-  });
+  };
+  if (errors.length > 0) {
+    responsePayload.errors = errors;
+  }
+  sendJson(res, 200, responsePayload);
 }
 
 async function handleActionsPull(req, res, worldId) {

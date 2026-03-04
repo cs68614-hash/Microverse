@@ -12,7 +12,7 @@ The old direct-LLM conversation path is still available behind a flag.
 
 ```bash
 cd bridge_server
-npm start
+OPENCLAW_GATEWAY_TOKEN=04e3891c338d002fb507cddf8246b4a5 npm start
 ```
 
 (`npm start` runs `node server.js`.)
@@ -20,6 +20,8 @@ npm start
 Server defaults:
 - Host: `127.0.0.1`
 - Port: `8787`
+- OpenClaw gateway URL: `http://127.0.0.1:12670` (`OPENCLAW_GATEWAY_URL`)
+- OpenClaw token: no default (`OPENCLAW_GATEWAY_TOKEN` is required for OpenClaw calls)
 
 Public endpoint:
 - `https://api.techsong.dpdns.org/microverse-bridge`
@@ -29,6 +31,16 @@ Optional:
 
 ```bash
 HOST=0.0.0.0 PORT=8787 npm start
+```
+
+Example with explicit OpenClaw settings:
+
+```bash
+HOST=0.0.0.0 \
+PORT=8787 \
+OPENCLAW_GATEWAY_URL=http://127.0.0.1:12670 \
+OPENCLAW_GATEWAY_TOKEN=04e3891c338d002fb507cddf8246b4a5 \
+npm start
 ```
 
 ## 2) Run Microverse
@@ -54,8 +66,14 @@ Set `USE_BRIDGE := false` to use the existing direct-LLM conversation path.
   - Accepts `{ "events": [...] }`
   - For an event like:
     - `{ "type": "player_said", "npc": "alice", "text": "..." }`
-  - Enqueues one action:
-    - `{ "npc": "alice", "type": "say", "text": "[OpenClaw/mainplaceholder] ..." }`
+  - Calls OpenClaw gateway `POST /v1/chat/completions` with:
+    - `Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN`
+    - `x-openclaw-agent-id: main`
+    - `model: openclaw`
+    - `user: microverse:{worldId}:alice` (stable per world/NPC session)
+  - Enqueues one action from completion content:
+    - `{ "npc": "alice", "type": "say", "text": "<openclaw content>" }`
+  - If OpenClaw config/call fails, falls back to placeholder text and includes error details in the batch response under `errors`.
 
 - `POST /v1/worlds/:worldId/actions/pull`
   - Returns and drains pending actions:
