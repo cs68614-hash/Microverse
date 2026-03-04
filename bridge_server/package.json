@@ -1,0 +1,10 @@
+{
+  "name": "microverse-bridge-server-poc1",
+  "version": "0.1.0",
+  "private": true,
+  "description": "POC-1 local Bridge server for Microverse integration",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

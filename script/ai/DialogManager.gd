@@ -1,10 +1,16 @@
 extends Node
 
+const USE_BRIDGE := true
+const BRIDGE_WORLD_ID := "poc1-world"
+const BRIDGE_FALLBACK_PLAYER_TEXT := "Say something back to the player"
+
 # 对话服务实例
 var dialog_service: DialogService
 
 # 当前设置（从SettingsManager获取）
 var current_settings = {}
+
+var dialog_bubble_scene = preload("res://scene/UI/DialogBubble.tscn")
 
 # 兼容性变量（为了保持与现有代码的兼容性）
 var current_speaker: CharacterBody2D = null
@@ -109,6 +115,10 @@ func _try_start_conversation():
 	# 获取当前选中角色附近的其他角色
 	var nearby_character = character_manager.get_nearby_character(character_manager.current_character)
 	if nearby_character:
+		if USE_BRIDGE:
+			await _try_start_bridge_conversation(character_manager.current_character, nearby_character)
+			return
+
 		# 使用新的对话服务开始对话
 		var success = dialog_service.try_start_conversation(character_manager.current_character, nearby_character)
 		if success:
@@ -119,6 +129,77 @@ func _try_start_conversation():
 			_add_memory_to_current_character(nearby_character, "%s主动与你开始了对话。" % character_manager.current_character.name)
 		else:
 			print("[DialogManager] 无法开始对话")
+
+func _try_start_bridge_conversation(player_character: CharacterBody2D, nearby_character: CharacterBody2D):
+	if not get_node_or_null("/root/BridgeClient"):
+		print("[DialogManager] BridgeClient不存在，跳过Bridge路径")
+		return
+
+	var npc_name = nearby_character.name.to_lower()
+	var player_text = _resolve_bridge_player_text(player_character)
+	var events = [{
+		"type": "player_said",
+		"player": player_character.name,
+		"npc": npc_name,
+		"text": player_text
+	}]
+
+	var batch_result = await BridgeClient.post_events_batch(BRIDGE_WORLD_ID, events)
+	if not batch_result.get("ok", false):
+		print("[DialogManager] Bridge事件提交失败：", batch_result)
+		return
+
+	var pull_result = await BridgeClient.pull_actions(BRIDGE_WORLD_ID)
+	if not pull_result.get("ok", false):
+		print("[DialogManager] Bridge动作拉取失败：", pull_result)
+		return
+
+	var data = pull_result.get("data", {})
+	var actions: Array = []
+	if data is Dictionary and data.get("actions", null) is Array:
+		actions = data["actions"]
+
+	if actions.is_empty():
+		print("[DialogManager] Bridge未返回动作")
+		return
+
+	for action in actions:
+		if not (action is Dictionary):
+			continue
+
+		if action.get("type", "") != "say":
+			continue
+
+		var action_npc_name = str(action.get("npc", "")).to_lower()
+		var action_text = str(action.get("text", ""))
+		var npc_node = _find_character_by_name_insensitive(action_npc_name)
+		if not npc_node:
+			npc_node = nearby_character
+
+		_show_dialog_bubble(npc_node, action_text)
+		print("[DialogManager] Bridge生成对话：%s 说：%s" % [npc_node.name, action_text])
+		break
+
+func _resolve_bridge_player_text(player_character: CharacterBody2D) -> String:
+	# Prefer explicit player text if another UI flow stores it on the player node.
+	var meta_keys = ["player_text", "last_player_text", "dialog_input_text", "latest_input_text"]
+	for key in meta_keys:
+		if player_character and player_character.has_meta(key):
+			var meta_text = str(player_character.get_meta(key, "")).strip_edges()
+			if not meta_text.is_empty():
+				return meta_text
+
+	# Fallback for POC-1 when no input dialog is wired yet.
+	return BRIDGE_FALLBACK_PLAYER_TEXT
+
+func _show_dialog_bubble(target_character: CharacterBody2D, dialog_text: String):
+	if not target_character or dialog_text.is_empty():
+		return
+
+	var dialog_bubble = dialog_bubble_scene.instantiate()
+	Engine.get_main_loop().root.add_child(dialog_bubble)
+	dialog_bubble.target_node = target_character
+	dialog_bubble.show_dialog(dialog_text)
 
 # 结束当前角色参与的对话
 func _end_current_character_conversation():
@@ -248,6 +329,14 @@ func _find_character_by_name(character_name: String) -> CharacterBody2D:
 	var characters = get_tree().get_nodes_in_group("controllable_characters")
 	for character in characters:
 		if character.name == character_name:
+			return character
+	return null
+
+func _find_character_by_name_insensitive(character_name: String) -> CharacterBody2D:
+	var normalized_name = character_name.to_lower()
+	var characters = get_tree().get_nodes_in_group("controllable_characters")
+	for character in characters:
+		if character.name.to_lower() == normalized_name:
 			return character
 	return null
 
