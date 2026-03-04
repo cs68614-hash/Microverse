@@ -8,7 +8,7 @@ var conversation_id: String
 var is_active: bool = false
 
 # 对话相关的场景引用
-var dialog_bubble_scene = preload("res://scene/UI/DialogBubble.tscn")
+var dialog_bubble_scene = preload("res://scene/ui/DialogBubble.tscn")
 var chat_history_scene = preload("res://scene/ChatHistory.tscn")
 
 # AI相关脚本引用

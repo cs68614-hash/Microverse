@@ -10,7 +10,7 @@ var dialog_service: DialogService
 # 当前设置（从SettingsManager获取）
 var current_settings = {}
 
-var dialog_bubble_scene = preload("res://scene/UI/DialogBubble.tscn")
+var dialog_bubble_scene = preload("res://scene/ui/DialogBubble.tscn")
 
 # 兼容性变量（为了保持与现有代码的兼容性）
 var current_speaker: CharacterBody2D = null

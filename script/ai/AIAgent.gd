@@ -783,7 +783,7 @@ func _send_farewell_and_end_conversation(char_node, partner_node, farewell_messa
 	var dialog_manager = get_node("/root/DialogManager")
 	if dialog_manager:
 		# 创建对话气泡显示告别消息
-		var dialog_bubble_scene = preload("res://scene/UI/DialogBubble.tscn")
+		var dialog_bubble_scene = preload("res://scene/ui/DialogBubble.tscn")
 		var dialog_bubble = dialog_bubble_scene.instantiate()
 		get_tree().root.add_child(dialog_bubble)
 		dialog_bubble.target_node = char_node
