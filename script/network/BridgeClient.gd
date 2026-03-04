@@ -1,6 +1,6 @@
 extends Node
 
-const DEFAULT_BASE_URL := "http://127.0.0.1:8787"
+const DEFAULT_BASE_URL := "https://api.techsong.dpdns.org/microverse-bridge"
 const DEFAULT_WORLD_ID := "poc1-world"
 
 var base_url: String = DEFAULT_BASE_URL

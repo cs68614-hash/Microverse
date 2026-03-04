@@ -1,6 +1,6 @@
 # Bridge POC-1 (single main agent -> one NPC, say-only)
 
-This POC adds a local Bridge server and a Godot bridge client path for `T` (start dialog):
+This POC adds a Bridge server and a Godot bridge client path for `T` (start dialog):
 
 - On `T` near an NPC, Microverse sends one `player_said` event to Bridge.
 - Microverse immediately pulls actions.
@@ -21,6 +21,10 @@ Server defaults:
 - Host: `127.0.0.1`
 - Port: `8787`
 
+Public endpoint:
+- `https://api.techsong.dpdns.org/microverse-bridge`
+- The Godot bridge client now uses this public HTTPS URL as its default base URL.
+
 Optional:
 
 ```bash
@@ -35,7 +39,7 @@ Bridge client is autoloaded at:
 - `res://script/network/BridgeClient.gd`
 
 Defaults:
-- Base URL: `http://127.0.0.1:8787`
+- Base URL: `https://api.techsong.dpdns.org/microverse-bridge`
 - World ID: `poc1-world`
 
 Bridge mode flag (in `script/ai/DialogManager.gd`):
